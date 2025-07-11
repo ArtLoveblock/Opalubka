@@ -1,4 +1,4 @@
 aiogram==2.25.1
 aiohttp==3.8.1
-cffi 
-wheel
+cffi==1.15.1
+wheel==0.40.0
