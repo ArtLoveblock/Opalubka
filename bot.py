@@ -1,11 +1,10 @@
-# Фикс для Python 3.13
-import sys
-import types
-sys.modules['imghdr'] = types.ModuleType('imghdr')
-sys.modules['imghdr'].what = lambda x: None
-
+# -*- coding: utf-8 -*-
 import os
 import logging
+import sys
+import types
+from threading import Thread
+import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Updater,
@@ -16,26 +15,25 @@ from telegram.ext import (
     CallbackContext,
     ConversationHandler
 )
-from flask import Flask, jsonify
-from threading import Thread
+
+# Фикс для Python 3.13+
+sys.modules['imghdr'] = types.ModuleType('imghdr')
+sys.modules['imghdr'].what = lambda x: None
 
 # Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
     handlers=[
-        logging.FileHandler('bot.log'),
-        logging.StreamHandler()
+        logging.StreamHandler(),
+        logging.FileHandler('bot.log', encoding='utf-8')
     ]
 )
 logger = logging.getLogger(__name__)
 
-# Инициализация Flask для health-check
-app = Flask(__name__)
-
-@app.route('/')
-def health_check():
-    return jsonify({"status": "ok", "bot": "running"})
+# Конфигурация
+ADMIN_CHAT_ID = "ВАШ_CHAT_ID"  # Замените на ваш chat_id (получить через @userinfobot)
+PING_INTERVAL = 300  # Интервал пинга в секундах (5 минут)
 
 # Состояния диалога
 (STONE_WIDTH, STRUCTURE_LENGTH, 
@@ -49,8 +47,21 @@ stone_data = {
     '40': {'width': 0.40, 'volume': 0.032, 'price': 240, 'work_price': 300}
 }
 
-# ID вашего чата для получения заявок
-ADMIN_CHAT_ID = "5559554783"  # Замените на ваш chat_id (можно получить через @userinfobot)
+def ping_server(app_name):
+    """Периодический пинг для поддержания активности"""
+    while True:
+        try:
+            requests.get(
+                f"https://{app_name}.onrender.com/",
+                timeout=10
+            )
+            logger.info("Пинг выполнен успешно")
+            requests.post(f"https://api.telegram.org/bot{os.environ['TELEGRAM_TOKEN']}/getMe")  # Дополнительный пинг
+        except Exception as e:
+            logger.error(f"Ошибка пинга: {e}")
+        finally:
+            import time
+            time.sleep(PING_INTERVAL)
 
 def start(update: Update, context: CallbackContext) -> int:
     """Обработка команды /start"""
@@ -109,14 +120,19 @@ def structure_height(update: Update, context: CallbackContext) -> int:
         block_length = 0.60
         block_height = 0.20
         
-        # Расчеты
+        # Расчет количества блоков
         blocks_per_row = length_m / block_length
         rows = height_m / block_height
         total_blocks = blocks_per_row * rows
+        
+        # Расчет стоимости
         formwork_cost = total_blocks * stone['price']
         work_cost = total_blocks * stone['work_price']
+        
+        # Расчет арматуры
         rebar_rows = int((rows + 1) // 2)
-        total_rebar = rebar_rows * length_m * 2
+        rebar_length = length_m * 2
+        total_rebar = rebar_rows * rebar_length
         
         # Сохраняем данные для заявки
         context.user_data['calculation'] = {
@@ -125,7 +141,8 @@ def structure_height(update: Update, context: CallbackContext) -> int:
             'height': height_m,
             'blocks': total_blocks,
             'concrete': total_blocks * stone['volume'],
-            'cost': formwork_cost + work_cost,
+            'formwork_cost': formwork_cost,
+            'work_cost': work_cost,
             'rebar': total_rebar
         }
         
@@ -138,7 +155,7 @@ def structure_height(update: Update, context: CallbackContext) -> int:
             f"▪ Высота строения: {height_m:.2f} м\n\n"
             f"🧱 Количество блоков: {total_blocks:.1f} шт\n"
             f"🏗️ Объем бетона: {total_blocks * stone['volume']:.3f} м³\n"
-            f"💰 Стоимость материалов: {formwork_cost:.2f} ₽\n"
+            f"💰 Стоимость опалубки: {formwork_cost:.2f} ₽\n"
             f"👷 Стоимость работы: {work_cost:.2f} ₽\n"
             f"🔩 Арматура: {total_rebar:.1f} м\n\n"
             f"Выберите действие:"
@@ -190,7 +207,7 @@ def contact_info(update: Update, context: CallbackContext) -> int:
         f"- Блоки: {calculation.get('blocks', 0):.1f} шт\n"
         f"- Бетон: {calculation.get('concrete', 0):.3f} м³\n"
         f"- Арматура: {calculation.get('rebar', 0):.1f} м\n"
-        f"💸 Примерная стоимость: {calculation.get('cost', 0):.2f} ₽"
+        f"💸 Общая стоимость: {calculation.get('formwork_cost', 0) + calculation.get('work_cost', 0):.2f} ₽"
     )
     
     # Отправляем клиенту
@@ -199,7 +216,7 @@ def contact_info(update: Update, context: CallbackContext) -> int:
         "Для нового расчета нажмите /start"
     )
     
-    # Отправляем себе
+    # Отправляем администратору
     context.bot.send_message(
         chat_id=ADMIN_CHAT_ID,
         text=application
@@ -221,7 +238,6 @@ def error_handler(update: Update, context: CallbackContext):
 
 def main():
     """Запуск бота"""
-    # Получаем токен из переменных окружения
     TOKEN = os.environ.get('TELEGRAM_TOKEN')
     if not TOKEN:
         logger.error("Токен не найден! Проверьте переменные окружения:")
@@ -235,7 +251,8 @@ def main():
         use_context=True,
         request_kwargs={
             'read_timeout': 30,
-            'connect_timeout': 15
+            'connect_timeout': 15,
+            'pool_timeout': 10
         }
     )
     dispatcher = updater.dispatcher
@@ -274,11 +291,8 @@ def main():
         )
         logger.info(f"Бот запущен в webhook режиме: https://{app_name}.onrender.com/")
         
-        # Запуск Flask в отдельном потоке
-        Thread(
-            target=app.run,
-            kwargs={'host': '0.0.0.0', 'port': 5000, 'debug': False}
-        ).start()
+        # Запуск потока для пинга
+        Thread(target=ping_server, args=(app_name,), daemon=True).start()
     else:
         updater.start_polling()
         logger.info("Бот запущен в polling режиме")
@@ -287,7 +301,5 @@ def main():
 
 if __name__ == '__main__':
     main()
-    updater.idle()
-
 if __name__ == '__main__':
     main()
