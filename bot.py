@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 import os
 import logging
 import sys
@@ -32,7 +33,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Конфигурация
-ADMIN_CHAT_ID = "ВАШ_CHAT_ID"  # Замените на ваш chat_id
+ADMIN_CHAT_ID = "5559554783"  # Замените на ваш chat_id
 PING_INTERVAL = 300  # 5 минут
 
 # Состояния диалога
@@ -244,17 +245,6 @@ def main():
         use_context=True,
         request_kwargs={
             'read_timeout': 30,
-            'connect_timeout': 15
-        }
-    )
-    dispatcher = updater.dispatcher
-
-    # Инициализация бота
-    updater = Updater(
-        TOKEN,
-        use_context=True,
-        request_kwargs={
-            'read_timeout': 30,
             'connect_timeout': 15,
             'pool_timeout': 10
         }
@@ -278,11 +268,14 @@ def main():
     dispatcher.add_error_handler(error_handler)
 
     # Режим работы
-      if os.getenv('RENDER'):
+    if os.getenv('RENDER'):
         PORT = int(os.environ.get('PORT', 8443))
         app_name = os.getenv('RENDER_APP_NAME', 'opalubka')
         
+        # Очистка предыдущего webhook
         updater.bot.delete_webhook()
+        
+        # Установка webhook
         updater.start_webhook(
             listen="0.0.0.0",
             port=PORT,
@@ -290,11 +283,13 @@ def main():
             webhook_url=f"https://{app_name}.onrender.com/",
             drop_pending_updates=True
         )
-        logger.info(f"Webhook: https://{app_name}.onrender.com/")
+        logger.info(f"Бот запущен в webhook режиме: https://{app_name}.onrender.com/")
+        
+        # Запуск потока для пинга
         Thread(target=ping_server, args=(app_name,), daemon=True).start()
     else:
         updater.start_polling()
-        logger.info("Polling режим")
+        logger.info("Бот запущен в polling режиме")
 
     updater.idle()
 
