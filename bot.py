@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # Конфигурация
 ADMIN_CHAT_ID = "5559554783"  # Замените на ваш chat_id
 PING_INTERVAL = 300  # 5 минут
-WEBHOOK_SECRET = os.getenv('WEBHOOK_SECRET', 'your_webhook_secret')
+WEBHOOK_SECRET = os.getenv('WEBHOOK_SECRET', 'kX8$sPq!9zLb*2@5')
 
 # Состояния диалога
 (STONE_WIDTH, STRUCTURE_LENGTH, 
