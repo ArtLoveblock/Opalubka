@@ -25,7 +25,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
     handlers=[
-        logging.StreamHandler(),
+        logging.StreamHandler(sys.stdout),  # Важно для Render
         logging.FileHandler('bot.log', encoding='utf-8')
     ]
 )
@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 # Конфигурация
 ADMIN_CHAT_ID = "5559554783"  # Замените на ваш chat_id
 PING_INTERVAL = 300  # 5 минут
+WEBHOOK_SECRET = os.getenv('WEBHOOK_SECRET', 'your_webhook_secret')
 
 # Состояния диалога
 (STONE_WIDTH, STRUCTURE_LENGTH, 
@@ -51,8 +52,8 @@ def ping_server(app_name):
     """Поддержание активности приложения"""
     while True:
         try:
-            requests.get(f"https://{app_name}.onrender.com/", timeout=10)
-            logger.info("Пинг выполнен")
+            response = requests.get(f"https://{app_name}.onrender.com", timeout=10)
+            logger.info(f"Пинг выполнен. Статус: {response.status_code}")
         except Exception as e:
             logger.error(f"Ошибка пинга: {str(e)}")
         finally:
@@ -230,7 +231,10 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     """Обработка ошибок"""
     logger.error(f"Ошибка: {context.error}", exc_info=True)
     if update and update.message:
-        await update.message.reply_text('⚠️ Произошла ошибка. Пожалуйста, нажмите /start')
+        try:
+            await update.message.reply_text('⚠️ Произошла ошибка. Пожалуйста, нажмите /start')
+        except:
+            logger.error("Не удалось отправить сообщение об ошибке")
 
 def main() -> None:
     """Запуск бота"""
@@ -239,12 +243,14 @@ def main() -> None:
         logger.error("Токен не найден!")
         sys.exit(1)
 
-    # Создаем Application с правильными параметрами
+    # Создаем Application с увеличенными таймаутами
     application = Application.builder() \
         .token(TOKEN) \
-        .read_timeout(30) \
-        .connect_timeout(15) \
-        .pool_timeout(10) \
+        .read_timeout(60) \
+        .write_timeout(60) \
+        .connect_timeout(30) \
+        .pool_timeout(60) \
+        .get_updates_read_timeout(60) \
         .build()
 
     # Обработчики
@@ -258,32 +264,43 @@ def main() -> None:
             CONTACT_INFO: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_info)]
         },
         fallbacks=[CommandHandler('cancel', cancel)],
-        per_message=True  # Исправлено для корректной обработки callback_query
+        per_message=False
     )
 
     application.add_handler(conv_handler)
     application.add_error_handler(error_handler)
 
-    # Режим работы
+    # Режим работы для Render
     if os.getenv('RENDER'):
-        PORT = int(os.environ.get('PORT', 8443))
+        PORT = int(os.environ.get('PORT', 10000))
         app_name = os.getenv('RENDER_APP_NAME', 'opalubka')
         
-        # Запуск webhook с правильными параметрами
-        application.run_webhook(
-            listen="0.0.0.0",
-            port=PORT,
-            webhook_url=f"https://{app_name}.onrender.com/",
-            drop_pending_updates=True,
-            secret_token='WEBHOOK_SECRET_TOKEN'  # Добавлен секретный токен
-        )
-        logger.info(f"Webhook запущен: https://{app_name}.onrender.com/")
+        # URL без слеша в конце!
+        webhook_url = f"https://{app_name}.onrender.com"
         
-        # Запуск потока для пинга
-        Thread(target=ping_server, args=(app_name,), daemon=True).start()
+        logger.info(f"Запуск webhook на порту {PORT} с URL: {webhook_url}")
+        
+        try:
+            # Устанавливаем webhook
+            application.run_webhook(
+                listen="0.0.0.0",
+                port=PORT,
+                url_path=TOKEN,
+                webhook_url=webhook_url,
+                secret_token=WEBHOOK_SECRET,
+                drop_pending_updates=True
+            )
+            
+            # Запускаем пинг в отдельном потоке
+            Thread(target=ping_server, args=(app_name,), daemon=True).start()
+            
+        except Exception as e:
+            logger.error(f"Ошибка запуска webhook: {str(e)}")
+            sys.exit(1)
     else:
+        # Локальный режим polling
         application.run_polling()
-        logger.info("Polling режим")
+        logger.info("Бот запущен в режиме polling")
 
 if __name__ == '__main__':
     main()
