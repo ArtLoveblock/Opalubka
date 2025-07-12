@@ -25,21 +25,19 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
     handlers=[
-        logging.StreamHandler(sys.stdout),  # Важно для Render
+        logging.StreamHandler(sys.stdout),
         logging.FileHandler('bot.log', encoding='utf-8')
     ]
 )
 logger = logging.getLogger(__name__)
 
 # Конфигурация
-ADMIN_CHAT_ID = "5559554783"  # Замените на ваш chat_id
-PING_INTERVAL = 300  # 5 минут
-WEBHOOK_SECRET = os.getenv('WEBHOOK_SECRET', 'kX8$sPq!9zLb*2@5')
+ADMIN_CHAT_ID = "5559554783"
+PING_INTERVAL = 300
+WEBHOOK_SECRET = "qwErTy1234567890poiUytRewq"  # Ваш секретный токен
 
 # Состояния диалога
-(STONE_WIDTH, STRUCTURE_LENGTH, 
- STRUCTURE_HEIGHT, FINAL_CALCULATION, 
- CONTACT_INFO) = range(5)
+(STONE_WIDTH, STRUCTURE_LENGTH, STRUCTURE_HEIGHT, FINAL_CALCULATION, CONTACT_INFO) = range(5)
 
 # Данные о камнях
 stone_data = {
@@ -52,10 +50,10 @@ def ping_server(app_name):
     """Поддержание активности приложения"""
     while True:
         try:
-            response = requests.get(f"https://{app_name}.onrender.com", timeout=10)
-            logger.info(f"Пинг выполнен. Статус: {response.status_code}")
+            requests.get(f"https://{app_name}.onrender.com", timeout=10)
+            logger.info("Пинг выполнен успешно")
         except Exception as e:
-            logger.error(f"Ошибка пинга: {str(e)}")
+            logger.error(f"Ошибка пинга: {e}")
         finally:
             import time
             time.sleep(PING_INTERVAL)
@@ -113,25 +111,18 @@ async def structure_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         length_m = context.user_data['structure_length']
         height_m = height
         
-        # Параметры блока (60x20 см)
+        # Расчеты
         block_length = 0.60
         block_height = 0.20
-        
-        # Расчет количества блоков
         blocks_per_row = length_m / block_length
         rows = height_m / block_height
         total_blocks = blocks_per_row * rows
-        
-        # Расчет стоимости
         formwork_cost = total_blocks * stone['price']
         work_cost = total_blocks * stone['work_price']
-        
-        # Расчет арматуры
         rebar_rows = int((rows + 1) // 2)
         rebar_length = length_m * 2
         total_rebar = rebar_rows * rebar_length
         
-        # Сохраняем данные для заявки
         context.user_data['calculation'] = {
             'width': stone['width']*100,
             'length': length_m,
@@ -143,7 +134,6 @@ async def structure_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             'rebar': total_rebar
         }
         
-        # Формируем результат
         result = (
             f"📊 Результаты расчета:\n"
             f"▪ Размер блока: 60x20 см\n"
@@ -188,11 +178,10 @@ async def final_calculation(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return ConversationHandler.END
 
 async def contact_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохранение контактных данных и отправка заявки"""
+    """Сохранение контактных данных"""
     user_data = update.message.text
     calculation = context.user_data.get('calculation', {})
     
-    # Формируем заявку
     application = (
         "📌 Новая заявка:\n"
         f"👤 Клиент: {user_data}\n"
@@ -207,13 +196,11 @@ async def contact_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         f"💸 Общая стоимость: {calculation.get('formwork_cost', 0) + calculation.get('work_cost', 0):.2f} ₽"
     )
     
-    # Отправляем клиенту
     await update.message.reply_text(
         "✅ Ваша заявка принята! Мы свяжемся с вами в ближайшее время.\n"
         "Для нового расчета нажмите /start"
     )
     
-    # Отправляем администратору
     await context.bot.send_message(
         chat_id=ADMIN_CHAT_ID,
         text=application
@@ -236,6 +223,15 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         except:
             logger.error("Не удалось отправить сообщение об ошибке")
 
+async def post_init(application: Application):
+    """Действия после инициализации"""
+    await application.bot.set_webhook(
+        url=f"https://{os.getenv('RENDER_APP_NAME')}.onrender.com/{application.bot.token}",
+        secret_token=WEBHOOK_SECRET,
+        allowed_updates=Update.ALL_TYPES
+    )
+    logger.info("Webhook успешно установлен")
+
 def main() -> None:
     """Запуск бота"""
     TOKEN = os.environ.get('TELEGRAM_TOKEN')
@@ -243,9 +239,10 @@ def main() -> None:
         logger.error("Токен не найден!")
         sys.exit(1)
 
-    # Создаем Application с увеличенными таймаутами
+    # Создаем Application
     application = Application.builder() \
         .token(TOKEN) \
+        .post_init(post_init) \
         .read_timeout(60) \
         .write_timeout(60) \
         .connect_timeout(30) \
@@ -263,42 +260,37 @@ def main() -> None:
             FINAL_CALCULATION: [CallbackQueryHandler(final_calculation)],
             CONTACT_INFO: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_info)]
         },
-        fallbacks=[CommandHandler('cancel', cancel)],
-        per_message=False
+        fallbacks=[CommandHandler('cancel', cancel)]
     )
 
     application.add_handler(conv_handler)
     application.add_error_handler(error_handler)
 
-    # Режим работы для Render
+    # Диагностические команды
+    application.add_handler(CommandHandler("ping", lambda u,c: u.message.reply_text("🏓 Pong!")))
+    application.add_handler(CommandHandler("webhook_info", 
+        lambda u,c: c.bot.get_webhook_info().then(
+            lambda info: u.message.reply_text(f"Webhook info:\n{info}"))))
+
+    # Режим работы
     if os.getenv('RENDER'):
-        PORT = int(os.environ.get('PORT', 10000))
+        PORT = int(os.environ.get('PORT', 8443))
         app_name = os.getenv('RENDER_APP_NAME', 'opalubka')
         
-        # URL без слеша в конце!
-        webhook_url = f"https://{app_name}.onrender.com"
+        logger.info(f"Запуск webhook на порту {PORT}")
         
-        logger.info(f"Запуск webhook на порту {PORT} с URL: {webhook_url}")
+        # Запуск потока для пинга
+        Thread(target=ping_server, args=(app_name,), daemon=True).start()
         
-        try:
-            # Устанавливаем webhook
-            application.run_webhook(
-                listen="0.0.0.0",
-                port=PORT,
-                url_path=TOKEN,
-                webhook_url=webhook_url,
-                secret_token=WEBHOOK_SECRET,
-                drop_pending_updates=True
-            )
-            
-            # Запускаем пинг в отдельном потоке
-            Thread(target=ping_server, args=(app_name,), daemon=True).start()
-            
-        except Exception as e:
-            logger.error(f"Ошибка запуска webhook: {str(e)}")
-            sys.exit(1)
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            webhook_url=f"https://{app_name}.onrender.com",
+            secret_token=WEBHOOK_SECRET,
+            cert=None,
+            drop_pending_updates=True
+        )
     else:
-        # Локальный режим polling
         application.run_polling()
         logger.info("Бот запущен в режиме polling")
 
