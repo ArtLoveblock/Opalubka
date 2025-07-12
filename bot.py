@@ -25,12 +25,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Проверка токена при старте
-TOKEN = os.getenv('7736990857:AAHEocRVYal13QDxM-HFaQA8b7llWJC_z6g')
+TOKEN = os.environ.get('7736990857:AAHEocRVYal13QDxM-HFaQA8b7llWJC_z6g')
 if not TOKEN:
-    logger.error("Токен не найден! Проверьте:")
-    logger.error("1. Переменная должна называться TELEGRAM_TOKEN")
-    logger.error("2. Добавлена в Environment Variables в Render")
-    logger.error("3. Перезапустите сервис после добавления")
+    print("="*50)
+    print("ОШИБКА: Токен не найден!")
+    print("Текущие переменные окружения:")
+    for k, v in os.environ.items():
+        print(f"{k}: {v}")
+    print("="*50)
     sys.exit(1)
 
 # ... [остальной ваш код без изменений] ...
