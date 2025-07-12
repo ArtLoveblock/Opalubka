@@ -25,27 +25,35 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def main():
-    # Получаем токен из переменных окружения
-    TOKEN = os.environ.get('TELEGRAM_TOKEN')
-    
-    # Дополнительная проверка для Render
+    TOKEN = os.environ.get('7736990857:AAHEocRVYal13QDxM-HFaQA8b7llWJC_z6g')
     if not TOKEN:
-        TOKEN = os.environ.get('RENDER_TELEGRAM_TOKEN')  # Альтернативное имя переменной
-        
-    if not TOKEN:
-        # Выводим все переменные окружения для диагностики
-        print("\n" + "="*50)
-        print("Доступные переменные окружения:")
-        for key, value in os.environ.items():
-            print(f"{key}: {value}")
-        print("="*50 + "\n")
-        
-        logger.error("Токен не найден! Проверьте:")
-        logger.error("1. Переменная должна называться TELEGRAM_TOKEN")
-        logger.error("2. Убедитесь, что она добавлена в настройках Render")
-        logger.error("3. Перезапустите сервис после добавления")
+        logger.error("Токен не найден!")
         sys.exit(1)
-    
+
+    updater = Updater(TOKEN, use_context=True)
+    dispatcher = updater.dispatcher
+
+    # Очистка старого webhook (на всякий случай)
+    updater.bot.delete_webhook()
+
+    # Режим работы
+    if os.getenv('RENDER'):
+        PORT = int(os.environ.get('PORT', 8443))
+        app_name = os.getenv('RENDER_APP_NAME', 'your-app-name')
+        webhook_url = f"https://{app_name}.onrender.com/{TOKEN}"
+        
+        updater.start_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            url_path=TOKEN,
+            webhook_url=webhook_url
+        )
+        logger.info(f"Webhook запущен: {webhook_url}")
+    else:
+        updater.start_polling()
+        logger.info("Polling режим (локальный запуск)")
+
+    updater.idle()
     # Инициализация бота
     updater = Updater(TOKEN, use_context=True)
     
