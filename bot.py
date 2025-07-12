@@ -16,13 +16,26 @@ from telegram.ext import (
     CallbackContext,
     ConversationHandler
 )
+from flask import Flask, jsonify
+from threading import Thread
 
 # Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.INFO,
+    handlers=[
+        logging.FileHandler('bot.log'),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
+
+# Инициализация Flask для health-check
+app = Flask(__name__)
+
+@app.route('/')
+def health_check():
+    return jsonify({"status": "ok", "bot": "running"})
 
 # Состояния диалога
 (STONE_WIDTH, STRUCTURE_LENGTH, 
@@ -35,6 +48,9 @@ stone_data = {
     '30': {'width': 0.30, 'volume': 0.024, 'price': 205, 'work_price': 300},
     '40': {'width': 0.40, 'volume': 0.032, 'price': 240, 'work_price': 300}
 }
+
+# ID вашего чата для получения заявок
+ADMIN_CHAT_ID = "5559554783"  # Замените на ваш chat_id (можно получить через @userinfobot)
 
 def start(update: Update, context: CallbackContext) -> int:
     """Обработка команды /start"""
@@ -102,6 +118,17 @@ def structure_height(update: Update, context: CallbackContext) -> int:
         rebar_rows = int((rows + 1) // 2)
         total_rebar = rebar_rows * length_m * 2
         
+        # Сохраняем данные для заявки
+        context.user_data['calculation'] = {
+            'width': stone['width']*100,
+            'length': length_m,
+            'height': height_m,
+            'blocks': total_blocks,
+            'concrete': total_blocks * stone['volume'],
+            'cost': formwork_cost + work_cost,
+            'rebar': total_rebar
+        }
+        
         # Формируем результат
         result = (
             f"📊 Результаты расчета:\n"
@@ -111,14 +138,14 @@ def structure_height(update: Update, context: CallbackContext) -> int:
             f"▪ Высота строения: {height_m:.2f} м\n\n"
             f"🧱 Количество блоков: {total_blocks:.1f} шт\n"
             f"🏗️ Объем бетона: {total_blocks * stone['volume']:.3f} м³\n"
-            f"💰 Стоимость опалубки: {formwork_cost:.2f} ₽\n"
+            f"💰 Стоимость материалов: {formwork_cost:.2f} ₽\n"
             f"👷 Стоимость работы: {work_cost:.2f} ₽\n"
             f"🔩 Арматура: {total_rebar:.1f} м\n\n"
             f"Выберите действие:"
         )
         
         keyboard = [
-            [InlineKeyboardButton("📞 Консультация", callback_data='consult')],
+            [InlineKeyboardButton("📞 Оставить заявку", callback_data='consult')],
             [InlineKeyboardButton("🔄 Новый расчет", callback_data='restart')]
         ]
         update.message.reply_text(
@@ -136,7 +163,7 @@ def final_calculation(update: Update, context: CallbackContext) -> int:
     query.answer()
     
     if query.data == 'consult':
-        query.edit_message_text(text="✍️ Введите ваше имя и телефон:\n(Например: Иван +79123456789)")
+        query.edit_message_text(text="✍️ Введите ваше имя и телефон для связи:\n(Например: Иван +79123456789)")
         return CONTACT_INFO
     elif query.data == 'restart':
         context.user_data.clear()
@@ -147,12 +174,38 @@ def final_calculation(update: Update, context: CallbackContext) -> int:
         return ConversationHandler.END
 
 def contact_info(update: Update, context: CallbackContext) -> int:
-    """Сохранение контактных данных"""
-    logger.info(f"Новая заявка: {update.message.text}\n{context.user_data}")
+    """Сохранение контактных данных и отправка заявки"""
+    user_data = update.message.text
+    calculation = context.user_data.get('calculation', {})
+    
+    # Формируем заявку
+    application = (
+        "📌 Новая заявка:\n"
+        f"👤 Клиент: {user_data}\n"
+        f"📏 Параметры:\n"
+        f"- Ширина: {calculation.get('width', 0)} см\n"
+        f"- Длина: {calculation.get('length', 0)} м\n"
+        f"- Высота: {calculation.get('height', 0)} м\n"
+        f"🧮 Расчет:\n"
+        f"- Блоки: {calculation.get('blocks', 0):.1f} шт\n"
+        f"- Бетон: {calculation.get('concrete', 0):.3f} м³\n"
+        f"- Арматура: {calculation.get('rebar', 0):.1f} м\n"
+        f"💸 Примерная стоимость: {calculation.get('cost', 0):.2f} ₽"
+    )
+    
+    # Отправляем клиенту
     update.message.reply_text(
-        "✅ Спасибо! Мы вам перезвоним.\n"
+        "✅ Ваша заявка принята! Мы свяжемся с вами в ближайшее время.\n"
         "Для нового расчета нажмите /start"
     )
+    
+    # Отправляем себе
+    context.bot.send_message(
+        chat_id=ADMIN_CHAT_ID,
+        text=application
+    )
+    
+    logger.info(f"Новая заявка: {application}")
     return ConversationHandler.END
 
 def cancel(update: Update, context: CallbackContext) -> int:
@@ -162,12 +215,13 @@ def cancel(update: Update, context: CallbackContext) -> int:
 
 def error_handler(update: Update, context: CallbackContext):
     """Обработка ошибок"""
-    logger.error(f"Ошибка: {context.error}")
+    logger.error(f"Ошибка: {context.error}", exc_info=True)
     if update and update.message:
         update.message.reply_text('⚠️ Произошла ошибка. Пожалуйста, нажмите /start')
 
 def main():
     """Запуск бота"""
+    # Получаем токен из переменных окружения
     TOKEN = os.environ.get('TELEGRAM_TOKEN')
     if not TOKEN:
         logger.error("Токен не найден! Проверьте переменные окружения:")
@@ -175,7 +229,15 @@ def main():
             logger.error(f"{k}: {v}")
         sys.exit(1)
 
-    updater = Updater(TOKEN, use_context=True)
+    # Инициализация бота
+    updater = Updater(
+        TOKEN,
+        use_context=True,
+        request_kwargs={
+            'read_timeout': 30,
+            'connect_timeout': 15
+        }
+    )
     dispatcher = updater.dispatcher
 
     # Обработчики
@@ -207,9 +269,16 @@ def main():
             listen="0.0.0.0",
             port=PORT,
             url_path="",
-            webhook_url=f"https://{app_name}.onrender.com/"
+            webhook_url=f"https://{app_name}.onrender.com/",
+            drop_pending_updates=True
         )
         logger.info(f"Бот запущен в webhook режиме: https://{app_name}.onrender.com/")
+        
+        # Запуск Flask в отдельном потоке
+        Thread(
+            target=app.run,
+            kwargs={'host': '0.0.0.0', 'port': 5000, 'debug': False}
+        ).start()
     else:
         updater.start_polling()
         logger.info("Бот запущен в polling режиме")
