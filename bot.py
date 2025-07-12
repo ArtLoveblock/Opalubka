@@ -1,10 +1,11 @@
+# Фикс для Python 3.13
 import sys
 import types
 sys.modules['imghdr'] = types.ModuleType('imghdr')
 sys.modules['imghdr'].what = lambda x: None
 
-import logging
 import os
+import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Updater,
@@ -23,6 +24,44 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Проверка токена при старте
+TOKEN = os.getenv('TELEGRAM_TOKEN')
+if not TOKEN:
+    logger.error("Токен не найден! Проверьте:")
+    logger.error("1. Переменная должна называться TELEGRAM_TOKEN")
+    logger.error("2. Добавлена в Environment Variables в Render")
+    logger.error("3. Перезапустите сервис после добавления")
+    sys.exit(1)
+
+# ... [остальной ваш код без изменений] ...
+
+if __name__ == '__main__':
+    # Проверка токена еще раз
+    if not TOKEN:
+        print("Токен не найден! Проверьте настройки Render.")
+        sys.exit(1)
+    
+    updater = Updater(TOKEN, use_context=True)
+    
+    # ... [инициализация обработчиков] ...
+
+    if os.getenv('RENDER'):
+        PORT = int(os.environ.get('PORT', 8443))
+        app_name = os.getenv('RENDER_APP_NAME', 'your-app-name')
+        webhook_url = f"https://{app_name}.onrender.com/{TOKEN}"
+        
+        updater.start_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            url_path=TOKEN,
+            webhook_url=webhook_url
+        )
+        logger.info(f"Бот запущен. Webhook: {webhook_url}")
+    else:
+        updater.start_polling()
+        logger.info("Бот запущен в polling режиме")
+    
+    updater.idle()
 # Состояния диалога
 (STONE_WIDTH, STRUCTURE_LENGTH, 
  STRUCTURE_HEIGHT, FINAL_CALCULATION, 
