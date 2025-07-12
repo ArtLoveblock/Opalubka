@@ -24,77 +24,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def main():
-    TOKEN = os.environ.get('7736990857:AAHEocRVYal13QDxM-HFaQA8b7llWJC_z6g')
-    if not TOKEN:
-        logger.error("Токен не найден!")
-        sys.exit(1)
-
-    updater = Updater(TOKEN, use_context=True)
-    dispatcher = updater.dispatcher
-
-    # Очистка старого webhook (на всякий случай)
-    updater.bot.delete_webhook()
-
-    # Режим работы
-    if os.getenv('RENDER'):
-        PORT = int(os.environ.get('PORT', 8443))
-        app_name = os.getenv('RENDER_APP_NAME', 'your-app-name')
-        webhook_url = f"https://{app_name}.onrender.com/{TOKEN}"
-        
-        updater.start_webhook(
-            listen="0.0.0.0",
-            port=PORT,
-            url_path=TOKEN,
-            webhook_url=webhook_url
-        )
-        logger.info(f"Webhook запущен: {webhook_url}")
-    else:
-        updater.start_polling()
-        logger.info("Polling режим (локальный запуск)")
-
-    updater.idle()
-    # Инициализация бота
-    updater = Updater(TOKEN, use_context=True)
-    
-    # [Ваши обработчики команд и ConversationHandler]
-    
-    # Всегда используем polling для надежности
-    updater.start_polling()
-    logger.info("Бот успешно запущен в polling режиме")
-    updater.idle()
-
-if __name__ == '__main__':
-    main()
-# ... [остальной ваш код без изменений] ...
-
-if __name__ == '__main__':
-    # Проверка токена еще раз
-    if not TOKEN:
-        print("Токен не найден! Проверьте настройки Render.")
-        sys.exit(1)
-    
-    updater = Updater(TOKEN, use_context=True)
-    
-    # ... [инициализация обработчиков] ...
-
-    if os.getenv('RENDER'):
-        PORT = int(os.environ.get('PORT', 8443))
-        app_name = os.getenv('RENDER_APP_NAME', 'your-app-name')
-        webhook_url = f"https://{app_name}.onrender.com/{TOKEN}"
-        
-        updater.start_webhook(
-            listen="0.0.0.0",
-            port=PORT,
-            url_path=TOKEN,
-            webhook_url=webhook_url
-        )
-        logger.info(f"Бот запущен. Webhook: {webhook_url}")
-    else:
-        updater.start_polling()
-        logger.info("Бот запущен в polling режиме")
-    
-    updater.idle()
 # Состояния диалога
 (STONE_WIDTH, STRUCTURE_LENGTH, 
  STRUCTURE_HEIGHT, FINAL_CALCULATION, 
@@ -244,9 +173,15 @@ def error_handler(update: Update, context: CallbackContext):
 
 def main():
     """Запуск бота"""
-    TOKEN = os.environ.get('7736990857:AAHEocRVYal13QDxM-HFaQA8b7llWJC_z6g')  # Более строгая проверка
+    # Получаем токен из переменных окружения
+    TOKEN = os.environ.get('TELEGRAM_TOKEN')
+    
     if not TOKEN:
-        logger.error("Токен бота не найден! Проверьте:")
+        # Диагностика для Render
+        logger.error("Доступные переменные окружения:")
+        for key, value in os.environ.items():
+            logger.error(f"{key}: {value}")
+        logger.error("\nТокен бота не найден! Проверьте:")
         logger.error("1. Переменную окружения TELEGRAM_TOKEN")
         logger.error("2. Что она добавлена в настройках Render")
         logger.error("3. Что название переменной написано точно")
@@ -277,6 +212,9 @@ def main():
         PORT = int(os.environ.get('PORT', 8443))
         app_name = os.getenv('RENDER_APP_NAME', 'your-app-name')
         webhook_url = f"https://{app_name}.onrender.com/{TOKEN}"
+        
+        # Очистка предыдущего webhook
+        updater.bot.delete_webhook()
         
         updater.start_webhook(
             listen="0.0.0.0",
