@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# -*- coding: utf-8 -*-
 import os
 import logging
 import sys
@@ -8,13 +7,13 @@ from threading import Thread
 import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    Updater,
+    Application,
     CommandHandler,
     MessageHandler,
-    Filters,
     CallbackQueryHandler,
-    CallbackContext,
-    ConversationHandler
+    ContextTypes,
+    ConversationHandler,
+    filters
 )
 
 # Фикс для Python 3.13+
@@ -48,7 +47,7 @@ stone_data = {
     '40': {'width': 0.40, 'volume': 0.032, 'price': 240, 'work_price': 300}
 }
 
-def ping_server(app_name):
+async def ping_server(app_name):
     """Поддержание активности приложения"""
     while True:
         try:
@@ -60,7 +59,7 @@ def ping_server(app_name):
             import time
             time.sleep(PING_INTERVAL)
 
-def start(update: Update, context: CallbackContext) -> int:
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработка команды /start"""
     context.user_data.clear()
     
@@ -71,7 +70,7 @@ def start(update: Update, context: CallbackContext) -> int:
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    update.message.reply_text(
+    await update.message.reply_text(
         '🔨 Калькулятор строительных блоков\n'
         'Размер блока: 60 см (длина) × 20 см (высота)\n'
         'Выберите ширину камня:',
@@ -79,30 +78,30 @@ def start(update: Update, context: CallbackContext) -> int:
     )
     return STONE_WIDTH
 
-def stone_width(update: Update, context: CallbackContext) -> int:
+async def stone_width(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработка выбора ширины камня"""
     query = update.callback_query
-    query.answer()
+    await query.answer()
     
     context.user_data['stone_width'] = query.data
-    query.edit_message_text(text=f"✅ Ширина камня: {query.data} см")
-    query.message.reply_text('📏 Введите ДЛИНУ строения в МЕТРАХ:')
+    await query.edit_message_text(text=f"✅ Ширина камня: {query.data} см")
+    await query.message.reply_text('📏 Введите ДЛИНУ строения в МЕТРАХ:')
     return STRUCTURE_LENGTH
 
-def structure_length(update: Update, context: CallbackContext) -> int:
+async def structure_length(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработка ввода длины строения"""
     try:
         length = float(update.message.text.replace(',', '.'))
         if length <= 0:
             raise ValueError
         context.user_data['structure_length'] = length
-        update.message.reply_text('📐 Введите ВЫСОТУ строения в МЕТРАХ:')
+        await update.message.reply_text('📐 Введите ВЫСОТУ строения в МЕТРАХ:')
         return STRUCTURE_HEIGHT
     except ValueError:
-        update.message.reply_text('❌ Ошибка! Введите число больше 0 (например: 5.2):')
+        await update.message.reply_text('❌ Ошибка! Введите число больше 0 (например: 5.2):')
         return STRUCTURE_LENGTH
 
-def structure_height(update: Update, context: CallbackContext) -> int:
+async def structure_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Расчет и вывод результатов"""
     try:
         height = float(update.message.text.replace(',', '.'))
@@ -162,32 +161,32 @@ def structure_height(update: Update, context: CallbackContext) -> int:
             [InlineKeyboardButton("📞 Оставить заявку", callback_data='consult')],
             [InlineKeyboardButton("🔄 Новый расчет", callback_data='restart')]
         ]
-        update.message.reply_text(
+        await update.message.reply_text(
             result,
             reply_markup=InlineKeyboardMarkup(keyboard))
         return FINAL_CALCULATION
         
     except ValueError:
-        update.message.reply_text('❌ Ошибка! Введите число больше 0 (например: 2.5):')
+        await update.message.reply_text('❌ Ошибка! Введите число больше 0 (например: 2.5):')
         return STRUCTURE_HEIGHT
 
-def final_calculation(update: Update, context: CallbackContext) -> int:
+async def final_calculation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработка выбора после расчета"""
     query = update.callback_query
-    query.answer()
+    await query.answer()
     
     if query.data == 'consult':
-        query.edit_message_text(text="✍️ Введите ваше имя и телефон для связи:\n(Например: Иван +79123456789)")
+        await query.edit_message_text(text="✍️ Введите ваше имя и телефон для связи:\n(Например: Иван +79123456789)")
         return CONTACT_INFO
     elif query.data == 'restart':
         context.user_data.clear()
-        context.bot.send_message(
+        await context.bot.send_message(
             chat_id=query.message.chat.id,
             text="🔄 Начинаем новый расчет! Нажмите /start"
         )
         return ConversationHandler.END
 
-def contact_info(update: Update, context: CallbackContext) -> int:
+async def contact_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Сохранение контактных данных и отправка заявки"""
     user_data = update.message.text
     calculation = context.user_data.get('calculation', {})
@@ -208,13 +207,13 @@ def contact_info(update: Update, context: CallbackContext) -> int:
     )
     
     # Отправляем клиенту
-    update.message.reply_text(
+    await update.message.reply_text(
         "✅ Ваша заявка принята! Мы свяжемся с вами в ближайшее время.\n"
         "Для нового расчета нажмите /start"
     )
     
     # Отправляем администратору
-    context.bot.send_message(
+    await context.bot.send_message(
         chat_id=ADMIN_CHAT_ID,
         text=application
     )
@@ -222,76 +221,65 @@ def contact_info(update: Update, context: CallbackContext) -> int:
     logger.info(f"Новая заявка: {application}")
     return ConversationHandler.END
 
-def cancel(update: Update, context: CallbackContext) -> int:
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Отмена диалога"""
-    update.message.reply_text('❌ Расчет отменен. Для начала нажмите /start')
+    await update.message.reply_text('❌ Расчет отменен. Для начала нажмите /start')
     return ConversationHandler.END
 
-def error_handler(update: Update, context: CallbackContext):
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ошибок"""
     logger.error(f"Ошибка: {context.error}", exc_info=True)
     if update and update.message:
-        update.message.reply_text('⚠️ Произошла ошибка. Пожалуйста, нажмите /start')
+        await update.message.reply_text('⚠️ Произошла ошибка. Пожалуйста, нажмите /start')
 
-def main():
+def main() -> None:
     """Запуск бота"""
     TOKEN = os.environ.get('TELEGRAM_TOKEN')
     if not TOKEN:
         logger.error("Токен не найден!")
         sys.exit(1)
 
-    updater = Updater(
-        TOKEN,
-        use_context=True,
-        request_kwargs={
-            'read_timeout': 30,
-            'connect_timeout': 15,
-            'pool_timeout': 10
-        }
-    )
-    dispatcher = updater.dispatcher
+    # Создаем Application
+    application = Application.builder().token(TOKEN).build()
 
     # Обработчики
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
             STONE_WIDTH: [CallbackQueryHandler(stone_width)],
-            STRUCTURE_LENGTH: [MessageHandler(Filters.text & ~Filters.command, structure_length)],
-            STRUCTURE_HEIGHT: [MessageHandler(Filters.text & ~Filters.command, structure_height)],
+            STRUCTURE_LENGTH: [MessageHandler(filters.TEXT & ~filters.COMMAND, structure_length)],
+            STRUCTURE_HEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, structure_height)],
             FINAL_CALCULATION: [CallbackQueryHandler(final_calculation)],
-            CONTACT_INFO: [MessageHandler(Filters.text & ~Filters.command, contact_info)]
+            CONTACT_INFO: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_info)]
         },
         fallbacks=[CommandHandler('cancel', cancel)],
     )
 
-    dispatcher.add_handler(conv_handler)
-    dispatcher.add_error_handler(error_handler)
+    application.add_handler(conv_handler)
+    application.add_error_handler(error_handler)
 
     # Режим работы
     if os.getenv('RENDER'):
         PORT = int(os.environ.get('PORT', 8443))
         app_name = os.getenv('RENDER_APP_NAME', 'opalubka')
         
-        # Очистка предыдущего webhook
-        updater.bot.delete_webhook()
-        
-        # Установка webhook
-        updater.start_webhook(
+        # Запуск webhook
+        application.run_webhook(
             listen="0.0.0.0",
             port=PORT,
             url_path="",
             webhook_url=f"https://{app_name}.onrender.com/",
             drop_pending_updates=True
         )
-        logger.info(f"Бот запущен в webhook режиме: https://{app_name}.onrender.com/")
+        logger.info(f"Webhook запущен: https://{app_name}.onrender.com/")
         
         # Запуск потока для пинга
-        Thread(target=ping_server, args=(app_name,), daemon=True).start()
+        Thread(target=lambda: asyncio.run(ping_server(app_name)), daemon=True).start()
     else:
-        updater.start_polling()
-        logger.info("Бот запущен в polling режиме")
-
-    updater.idle()
+        application.run_polling()
+        logger.info("Polling режим")
 
 if __name__ == '__main__':
+    import asyncio
+    main()
     main()
