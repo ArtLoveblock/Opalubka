@@ -5,7 +5,6 @@ import sys
 import types
 from threading import Thread
 import requests
-import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -33,7 +32,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Конфигурация
-ADMIN_CHAT_ID = "5559554783"  # Замените на ваш chat_id (получить через @userinfobot)
+ADMIN_CHAT_ID = "5559554783"  # Замените на ваш chat_id
 PING_INTERVAL = 300  # 5 минут
 
 # Состояния диалога
@@ -240,8 +239,13 @@ def main() -> None:
         logger.error("Токен не найден!")
         sys.exit(1)
 
-    # Создаем Application
-    application = Application.builder().token(TOKEN).build()
+    # Создаем Application с правильными параметрами
+    application = Application.builder() \
+        .token(TOKEN) \
+        .read_timeout(30) \
+        .connect_timeout(15) \
+        .pool_timeout(10) \
+        .build()
 
     # Обработчики
     conv_handler = ConversationHandler(
@@ -254,7 +258,7 @@ def main() -> None:
             CONTACT_INFO: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_info)]
         },
         fallbacks=[CommandHandler('cancel', cancel)],
-        per_message=False
+        per_message=True  # Исправлено для корректной обработки callback_query
     )
 
     application.add_handler(conv_handler)
@@ -265,12 +269,13 @@ def main() -> None:
         PORT = int(os.environ.get('PORT', 8443))
         app_name = os.getenv('RENDER_APP_NAME', 'opalubka')
         
-        # Запуск webhook
+        # Запуск webhook с правильными параметрами
         application.run_webhook(
             listen="0.0.0.0",
             port=PORT,
             webhook_url=f"https://{app_name}.onrender.com/",
-            drop_pending_updates=True
+            drop_pending_updates=True,
+            secret_token='WEBHOOK_SECRET_TOKEN'  # Добавлен секретный токен
         )
         logger.info(f"Webhook запущен: https://{app_name}.onrender.com/")
         
@@ -281,5 +286,4 @@ def main() -> None:
         logger.info("Polling режим")
 
 if __name__ == '__main__':
-    main()
     main()
