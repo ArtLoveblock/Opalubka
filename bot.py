@@ -90,22 +90,17 @@ def structure_height(update: Update, context: CallbackContext) -> int:
         height_m = height
         
         # Параметры блока (60x20 см)
-        block_length = 0.60  # 60 см
-        block_height = 0.20   # 20 см
+        block_length = 0.60
+        block_height = 0.20
         
-        # Расчет количества блоков
+        # Расчеты
         blocks_per_row = length_m / block_length
         rows = height_m / block_height
         total_blocks = blocks_per_row * rows
-        
-        # Расчет стоимости опалубки
         formwork_cost = total_blocks * stone['price']
         work_cost = total_blocks * stone['work_price']
-        
-        # Расчет арматуры (через каждый ряд)
-        rebar_rows = int((rows + 1) // 2)  # Каждый нечетный ряд
-        rebar_length = length_m * 2  # Две арматуры на ряд
-        total_rebar = rebar_rows * rebar_length
+        rebar_rows = int((rows + 1) // 2)
+        total_rebar = rebar_rows * length_m * 2
         
         # Формируем результат
         result = (
@@ -173,20 +168,13 @@ def error_handler(update: Update, context: CallbackContext):
 
 def main():
     """Запуск бота"""
-    # Получаем токен из переменных окружения
     TOKEN = os.environ.get('TELEGRAM_TOKEN')
-    
     if not TOKEN:
-        # Диагностика для Render
-        logger.error("Доступные переменные окружения:")
-        for key, value in os.environ.items():
-            logger.error(f"{key}: {value}")
-        logger.error("\nТокен бота не найден! Проверьте:")
-        logger.error("1. Переменную окружения TELEGRAM_TOKEN")
-        logger.error("2. Что она добавлена в настройках Render")
-        logger.error("3. Что название переменной написано точно")
+        logger.error("Токен не найден! Проверьте переменные окружения:")
+        for k, v in os.environ.items():
+            logger.error(f"{k}: {v}")
         sys.exit(1)
-    
+
     updater = Updater(TOKEN, use_context=True)
     dispatcher = updater.dispatcher
 
@@ -208,26 +196,28 @@ def main():
 
     # Режим работы
     if os.getenv('RENDER'):
-        # Webhook для Render
         PORT = int(os.environ.get('PORT', 8443))
-        app_name = os.getenv('RENDER_APP_NAME', 'your-app-name')
-        webhook_url = f"https://{app_name}.onrender.com/{TOKEN}"
+        app_name = os.getenv('RENDER_APP_NAME', 'opalubka')
         
         # Очистка предыдущего webhook
         updater.bot.delete_webhook()
         
+        # Установка webhook
         updater.start_webhook(
             listen="0.0.0.0",
             port=PORT,
-            url_path=TOKEN,
-            webhook_url=webhook_url
+            url_path="",
+            webhook_url=f"https://{app_name}.onrender.com/"
         )
-        logger.info(f"Бот запущен в webhook режиме: {webhook_url}")
+        logger.info(f"Бот запущен в webhook режиме: https://{app_name}.onrender.com/")
     else:
-        # Локальный polling
         updater.start_polling()
         logger.info("Бот запущен в polling режиме")
 
+    updater.idle()
+
+if __name__ == '__main__':
+    main()
     updater.idle()
 
 if __name__ == '__main__':
