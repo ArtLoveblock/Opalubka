@@ -1,4 +1,12 @@
-# Фикс для отсутствующих модулей в Python 3.13
+def main():
+    """Запуск бота"""
+    TOKEN = os.environ.get('7736990857:AAHEocRVYal13QDxM-HFaQA8b7llWJC_z6g')  # Более строгая проверка
+    if not TOKEN:
+        logger.error("Токен бота не найден! Проверьте:")
+        logger.error("1. Переменную окружения TELEGRAM_TOKEN")
+        logger.error("2. Что она добавлена в настройках Render")
+        logger.error("3. Что название переменной написано точно")
+        sys.exit(1)# Фикс для отсутствующих модулей в Python 3.13
 import sys
 import types
 sys.modules['imghdr'] = types.ModuleType('imghdr')
