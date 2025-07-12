@@ -5,6 +5,7 @@ import sys
 import types
 from threading import Thread
 import requests
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -32,7 +33,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Конфигурация
-ADMIN_CHAT_ID = "5559554783"  # Замените на ваш chat_id
+ADMIN_CHAT_ID = "5559554783"  # Замените на ваш chat_id (получить через @userinfobot)
 PING_INTERVAL = 300  # 5 минут
 
 # Состояния диалога
@@ -47,7 +48,7 @@ stone_data = {
     '40': {'width': 0.40, 'volume': 0.032, 'price': 240, 'work_price': 300}
 }
 
-async def ping_server(app_name):
+def ping_server(app_name):
     """Поддержание активности приложения"""
     while True:
         try:
@@ -226,7 +227,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text('❌ Расчет отменен. Для начала нажмите /start')
     return ConversationHandler.END
 
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработка ошибок"""
     logger.error(f"Ошибка: {context.error}", exc_info=True)
     if update and update.message:
@@ -253,6 +254,7 @@ def main() -> None:
             CONTACT_INFO: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_info)]
         },
         fallbacks=[CommandHandler('cancel', cancel)],
+        per_message=False
     )
 
     application.add_handler(conv_handler)
@@ -267,19 +269,17 @@ def main() -> None:
         application.run_webhook(
             listen="0.0.0.0",
             port=PORT,
-            url_path="",
             webhook_url=f"https://{app_name}.onrender.com/",
             drop_pending_updates=True
         )
         logger.info(f"Webhook запущен: https://{app_name}.onrender.com/")
         
         # Запуск потока для пинга
-        Thread(target=lambda: asyncio.run(ping_server(app_name)), daemon=True).start()
+        Thread(target=ping_server, args=(app_name,), daemon=True).start()
     else:
         application.run_polling()
         logger.info("Polling режим")
 
 if __name__ == '__main__':
-    import asyncio
     main()
     main()
