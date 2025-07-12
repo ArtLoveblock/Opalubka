@@ -32,7 +32,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Конфигурация
-ADMIN_CHAT_ID = "ВАШ_CHAT_ID"  # Замените на ваш chat_id (получить через @userinfobot)
+ADMIN_CHAT_ID = "5559554783"  # Замените на ваш chat_id (получить через @userinfobot)
 PING_INTERVAL = 300  # Интервал пинга в секундах (5 минут)
 
 # Состояния диалога
