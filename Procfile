@@ -1,1 +1,1 @@
-worker: python bot.py
+orker: python bot.py --polling
