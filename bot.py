@@ -32,15 +32,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Конфигурация
-ADMIN_CHAT_ID = "5559554783"  # Замените на ваш chat_id (получить через @userinfobot)
-PING_INTERVAL = 300  # Интервал пинга в секундах (5 минут)
+ADMIN_CHAT_ID = "ВАШ_CHAT_ID"  # Замените на ваш chat_id
+PING_INTERVAL = 300  # 5 минут
 
 # Состояния диалога
 (STONE_WIDTH, STRUCTURE_LENGTH, 
  STRUCTURE_HEIGHT, FINAL_CALCULATION, 
  CONTACT_INFO) = range(5)
 
-# Данные о камнях (в метрах)
+# Данные о камнях
 stone_data = {
     '20': {'width': 0.20, 'volume': 0.016, 'price': 190, 'work_price': 300},
     '30': {'width': 0.30, 'volume': 0.024, 'price': 205, 'work_price': 300},
@@ -48,17 +48,13 @@ stone_data = {
 }
 
 def ping_server(app_name):
-    """Периодический пинг для поддержания активности"""
+    """Поддержание активности приложения"""
     while True:
         try:
-            requests.get(
-                f"https://{app_name}.onrender.com/",
-                timeout=10
-            )
-            logger.info("Пинг выполнен успешно")
-            requests.post(f"https://api.telegram.org/bot{os.environ['TELEGRAM_TOKEN']}/getMe")  # Дополнительный пинг
+            requests.get(f"https://{app_name}.onrender.com/", timeout=10)
+            logger.info("Пинг выполнен")
         except Exception as e:
-            logger.error(f"Ошибка пинга: {e}")
+            logger.error(f"Ошибка пинга: {str(e)}")
         finally:
             import time
             time.sleep(PING_INTERVAL)
@@ -240,10 +236,18 @@ def main():
     """Запуск бота"""
     TOKEN = os.environ.get('TELEGRAM_TOKEN')
     if not TOKEN:
-        logger.error("Токен не найден! Проверьте переменные окружения:")
-        for k, v in os.environ.items():
-            logger.error(f"{k}: {v}")
+        logger.error("Токен не найден!")
         sys.exit(1)
+
+    updater = Updater(
+        TOKEN,
+        use_context=True,
+        request_kwargs={
+            'read_timeout': 30,
+            'connect_timeout': 15
+        }
+    )
+    dispatcher = updater.dispatcher
 
     # Инициализация бота
     updater = Updater(
@@ -274,14 +278,11 @@ def main():
     dispatcher.add_error_handler(error_handler)
 
     # Режим работы
-    if os.getenv('RENDER'):
+      if os.getenv('RENDER'):
         PORT = int(os.environ.get('PORT', 8443))
         app_name = os.getenv('RENDER_APP_NAME', 'opalubka')
         
-        # Очистка предыдущего webhook
         updater.bot.delete_webhook()
-        
-        # Установка webhook
         updater.start_webhook(
             listen="0.0.0.0",
             port=PORT,
@@ -289,17 +290,13 @@ def main():
             webhook_url=f"https://{app_name}.onrender.com/",
             drop_pending_updates=True
         )
-        logger.info(f"Бот запущен в webhook режиме: https://{app_name}.onrender.com/")
-        
-        # Запуск потока для пинга
+        logger.info(f"Webhook: https://{app_name}.onrender.com/")
         Thread(target=ping_server, args=(app_name,), daemon=True).start()
     else:
         updater.start_polling()
-        logger.info("Бот запущен в polling режиме")
+        logger.info("Polling режим")
 
     updater.idle()
 
-if __name__ == '__main__':
-    main()
 if __name__ == '__main__':
     main()
