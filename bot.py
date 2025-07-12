@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Проверка токена при старте
-TOKEN = os.getenv('TELEGRAM_TOKEN')
+TOKEN = os.getenv('7736990857:AAHEocRVYal13QDxM-HFaQA8b7llWJC_z6g')
 if not TOKEN:
     logger.error("Токен не найден! Проверьте:")
     logger.error("1. Переменная должна называться TELEGRAM_TOKEN")
