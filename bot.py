@@ -24,17 +24,40 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Проверка токена при старте
-TOKEN = os.environ.get('7736990857:AAHEocRVYal13QDxM-HFaQA8b7llWJC_z6g')
-if not TOKEN:
-    print("="*50)
-    print("ОШИБКА: Токен не найден!")
-    print("Текущие переменные окружения:")
-    for k, v in os.environ.items():
-        print(f"{k}: {v}")
-    print("="*50)
-    sys.exit(1)
+def main():
+    # Получаем токен из переменных окружения
+    TOKEN = os.environ.get('TELEGRAM_TOKEN')
+    
+    # Дополнительная проверка для Render
+    if not TOKEN:
+        TOKEN = os.environ.get('RENDER_TELEGRAM_TOKEN')  # Альтернативное имя переменной
+        
+    if not TOKEN:
+        # Выводим все переменные окружения для диагностики
+        print("\n" + "="*50)
+        print("Доступные переменные окружения:")
+        for key, value in os.environ.items():
+            print(f"{key}: {value}")
+        print("="*50 + "\n")
+        
+        logger.error("Токен не найден! Проверьте:")
+        logger.error("1. Переменная должна называться TELEGRAM_TOKEN")
+        logger.error("2. Убедитесь, что она добавлена в настройках Render")
+        logger.error("3. Перезапустите сервис после добавления")
+        sys.exit(1)
+    
+    # Инициализация бота
+    updater = Updater(TOKEN, use_context=True)
+    
+    # [Ваши обработчики команд и ConversationHandler]
+    
+    # Всегда используем polling для надежности
+    updater.start_polling()
+    logger.info("Бот успешно запущен в polling режиме")
+    updater.idle()
 
+if __name__ == '__main__':
+    main()
 # ... [остальной ваш код без изменений] ...
 
 if __name__ == '__main__':
