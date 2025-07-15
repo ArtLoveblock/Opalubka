@@ -187,6 +187,11 @@ async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🔄 Автоматический перезапуск...")
         return await start(update, context)  # Аварийный перезапуск
 
+async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import os
+    await update.message.reply_text("🔄 Перезапускаюсь...")
+    os._exit(1)  # Принудительный выход
+
 async def final_calculation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработка выбора после расчета"""
     query = update.callback_query
@@ -293,6 +298,7 @@ def main() -> None:
     application.add_error_handler(error_handler)
     application.add_handler(CommandHandler("clear", clear_history))
     application.add_handler(CallbackQueryHandler(clear_history, pattern="^restart$"))
+    application.add_handler(CommandHandler("restart", restart_bot))
 
     # Диагностические команды
     application.add_handler(CommandHandler("ping", lambda u,c: u.message.reply_text("🏓 Pong!")))
