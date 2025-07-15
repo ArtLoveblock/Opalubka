@@ -160,6 +160,11 @@ async def structure_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     except ValueError:
         await update.message.reply_text('❌ Ошибка! Введите число больше 0 (например: 2.5):')
         return STRUCTURE_HEIGHT
+        
+async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    await update.message.reply_text("✅ Данные очищены! Нажмите /start")
+    return ConversationHandler.END  # Важно для выхода из текущего состояния
 
 async def final_calculation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработка выбора после расчета"""
