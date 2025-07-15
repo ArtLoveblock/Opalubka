@@ -215,7 +215,7 @@ async def post_init(application: Application):
     )
     logger.info("Webhook успешно установлен")
 
-ddef main() -> None:
+def main() -> None:
     """Запуск бота"""
     TOKEN = os.environ.get('TELEGRAM_TOKEN')
     if not TOKEN:
