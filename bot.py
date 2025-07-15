@@ -3,8 +3,6 @@ import os
 import logging
 import sys
 import types
-from threading import Thread
-import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -25,19 +23,21 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
     handlers=[
-        logging.StreamHandler(sys.stdout),
+        logging.StreamHandler(),
         logging.FileHandler('bot.log', encoding='utf-8')
     ]
 )
 logger = logging.getLogger(__name__)
 
 # Конфигурация
-ADMIN_CHAT_ID = "5559554783"
+ADMIN_CHAT_ID = "5559554783"  # Замените на ваш chat_id
 PING_INTERVAL = 300
 WEBHOOK_SECRET = "qwErTy1234567890poiUytRewq"  # Ваш секретный токен
 
 # Состояния диалога
-(STONE_WIDTH, STRUCTURE_LENGTH, STRUCTURE_HEIGHT, FINAL_CALCULATION, CONTACT_INFO) = range(5)
+(STONE_WIDTH, STRUCTURE_LENGTH, 
+ STRUCTURE_HEIGHT, FINAL_CALCULATION, 
+ CONTACT_INFO) = range(5)
 
 # Данные о камнях
 stone_data = {
@@ -46,26 +46,15 @@ stone_data = {
     '40': {'width': 0.40, 'volume': 0.032, 'price': 240, 'work_price': 300}
 }
 
-def ping_server(app_name):
-    """Поддержание активности приложения"""
-    while True:
-        try:
-            requests.get(f"https://{app_name}.onrender.com", timeout=10)
-            logger.info("Пинг выполнен успешно")
-        except Exception as e:
-            logger.error(f"Ошибка пинга: {e}")
-        finally:
-            import time
-            time.sleep(PING_INTERVAL)
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Обработка команды /start"""
+    """Обработка команды /start (работает на любом этапе)"""
     context.user_data.clear()
     
     keyboard = [
         [InlineKeyboardButton("20 см", callback_data='20')],
         [InlineKeyboardButton("30 см", callback_data='30')],
-        [InlineKeyboardButton("40 см", callback_data='40')]
+        [InlineKeyboardButton("40 см", callback_data='40')],
+        [InlineKeyboardButton("🔄 Начать сначала", callback_data='restart')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -77,28 +66,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     )
     return STONE_WIDTH
 
+async def restart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка кнопки 'Начать сначала'"""
+    return await start(update, context)
+
 async def stone_width(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработка выбора ширины камня"""
     query = update.callback_query
     await query.answer()
     
+    if query.data == 'restart':
+        return await start(update, context)
+    
     context.user_data['stone_width'] = query.data
     await query.edit_message_text(text=f"✅ Ширина камня: {query.data} см")
     await query.message.reply_text('📏 Введите ДЛИНУ строения в МЕТРАХ:')
     return STRUCTURE_LENGTH
-
-async def structure_length(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Обработка ввода длины строения"""
-    try:
-        length = float(update.message.text.replace(',', '.'))
-        if length <= 0:
-            raise ValueError
-        context.user_data['structure_length'] = length
-        await update.message.reply_text('📐 Введите ВЫСОТУ строения в МЕТРАХ:')
-        return STRUCTURE_HEIGHT
-    except ValueError:
-        await update.message.reply_text('❌ Ошибка! Введите число больше 0 (например: 5.2):')
-        return STRUCTURE_LENGTH
 
 async def structure_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Расчет и вывод результатов"""
@@ -232,23 +215,14 @@ async def post_init(application: Application):
     )
     logger.info("Webhook успешно установлен")
 
-def main() -> None:
+ddef main() -> None:
     """Запуск бота"""
     TOKEN = os.environ.get('TELEGRAM_TOKEN')
     if not TOKEN:
         logger.error("Токен не найден!")
         sys.exit(1)
 
-    # Создаем Application
-    application = Application.builder() \
-        .token(TOKEN) \
-        .post_init(post_init) \
-        .read_timeout(60) \
-        .write_timeout(60) \
-        .connect_timeout(30) \
-        .pool_timeout(60) \
-        .get_updates_read_timeout(60) \
-        .build()
+    application = Application.builder().token(TOKEN).build()
 
     # Обработчики
     conv_handler = ConversationHandler(
@@ -260,39 +234,25 @@ def main() -> None:
             FINAL_CALCULATION: [CallbackQueryHandler(final_calculation)],
             CONTACT_INFO: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_info)]
         },
-        fallbacks=[CommandHandler('cancel', cancel)]
+        fallbacks=[CommandHandler('start', start)],  # /start работает всегда
+        per_message=True
     )
 
+    # Добавляем обработчик /start отдельно, чтобы работал в любом месте
+    application.add_handler(CommandHandler('start', start))
     application.add_handler(conv_handler)
     application.add_error_handler(error_handler)
 
-    # Диагностические команды
-    application.add_handler(CommandHandler("ping", lambda u,c: u.message.reply_text("🏓 Pong!")))
-    application.add_handler(CommandHandler("webhook_info", 
-        lambda u,c: c.bot.get_webhook_info().then(
-            lambda info: u.message.reply_text(f"Webhook info:\n{info}"))))
-
     # Режим работы
     if os.getenv('RENDER'):
-        PORT = int(os.environ.get('PORT', 8443))
-        app_name = os.getenv('RENDER_APP_NAME', 'opalubka')
-        
-        logger.info(f"Запуск webhook на порту {PORT}")
-        
-        # Запуск потока для пинга
-        Thread(target=ping_server, args=(app_name,), daemon=True).start()
-        
         application.run_webhook(
             listen="0.0.0.0",
-            port=PORT,
-            webhook_url=f"https://{app_name}.onrender.com",
-            secret_token=WEBHOOK_SECRET,
-            cert=None,
+            port=int(os.getenv('PORT', 8443)),
+            webhook_url=f"https://{os.getenv('RENDER_APP_NAME')}.onrender.com/",
             drop_pending_updates=True
         )
     else:
         application.run_polling()
-        logger.info("Бот запущен в режиме polling")
 
 if __name__ == '__main__':
     main()
