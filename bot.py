@@ -268,12 +268,14 @@ def main() -> None:
     application.add_handler(conv_handler)
     application.add_error_handler(error_handler)
 
+    # Установка меню (синхронный аналог)
+    application.add_handler(CommandHandler("command1", command1))  # Если нужно
+
     # Режим работы
     if os.getenv('RENDER'):
         PORT = int(os.environ.get('PORT', 8443))
         app_name = os.getenv('RENDER_APP_NAME', 'opalubka')
         
-        # Запуск потока для пинга
         Thread(target=ping_server, args=(app_name,), daemon=True).start()
         
         application.run_webhook(
@@ -284,9 +286,7 @@ def main() -> None:
             drop_pending_updates=True
         )
     else:
-        await application.bot.set_chat_menu_button(
-    menu_button=MenuButtonCommands()
-).run_polling()
+        application.run_polling()
 
 if __name__ == '__main__':
     main()
