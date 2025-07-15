@@ -34,11 +34,10 @@ logger = logging.getLogger(__name__)
 # Конфигурация
 ADMIN_CHAT_ID = "5559554783"
 PING_INTERVAL = 300
-WEBHOOK_SECRET = "qwErTy1234567890poiUytRewq"
+WEBHOOK_SECRET = "qwErTy1234567890poiUytRewq"  # Ваш секретный токен
 
 # Состояния диалога
-(STONE_WIDTH, STRUCTURE_LENGTH, STRUCTURE_HEIGHT, 
- FINAL_CALCULATION, CONTACT_INFO) = range(5)
+(STONE_WIDTH, STRUCTURE_LENGTH, STRUCTURE_HEIGHT, FINAL_CALCULATION, CONTACT_INFO) = range(5)
 
 # Данные о камнях
 stone_data = {
@@ -94,10 +93,6 @@ async def structure_length(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         length = float(update.message.text.replace(',', '.'))
         if length <= 0:
             raise ValueError
-        if length > 100:
-            await update.message.reply_text('❌ Максимальная длина - 100 м!')
-            return STRUCTURE_LENGTH
-            
         context.user_data['structure_length'] = length
         await update.message.reply_text('📐 Введите ВЫСОТУ строения в МЕТРАХ:')
         return STRUCTURE_HEIGHT
@@ -111,9 +106,6 @@ async def structure_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         height = float(update.message.text.replace(',', '.'))
         if height <= 0:
             raise ValueError
-        if height > 50:
-            await update.message.reply_text('❌ Максимальная высота - 50 м!')
-            return STRUCTURE_HEIGHT
             
         stone = stone_data[context.user_data['stone_width']]
         length_m = context.user_data['structure_length']
@@ -148,11 +140,11 @@ async def structure_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             f"▪ Ширина кладки: {stone['width']*100:.0f} см\n"
             f"▪ Длина строения: {length_m:.2f} м\n"
             f"▪ Высота строения: {height_m:.2f} м\n\n"
-            f"🧱 Количество блоков: {total_blocks:,.1f} шт\n"
+            f"🧱 Количество блоков: {total_blocks:.1f} шт\n"
             f"🏗️ Объем бетона: {total_blocks * stone['volume']:.3f} м³\n"
-            f"💰 Стоимость опалубки: {formwork_cost:,.2f} ₽\n"
-            f"👷 Стоимость работы: {work_cost:,.2f} ₽\n"
-            f"🔩 Арматура: {total_rebar:,.1f} м\n\n"
+            f"💰 Стоимость опалубки: {formwork_cost:.2f} ₽\n"
+            f"👷 Стоимость работы: {work_cost:.2f} ₽\n"
+            f"🔩 Арматура: {total_rebar:.1f} м\n\n"
             f"Выберите действие:"
         )
         
@@ -198,10 +190,10 @@ async def contact_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         f"- Длина: {calculation.get('length', 0)} м\n"
         f"- Высота: {calculation.get('height', 0)} м\n"
         f"🧮 Расчет:\n"
-        f"- Блоки: {calculation.get('blocks', 0):,.1f} шт\n"
+        f"- Блоки: {calculation.get('blocks', 0):.1f} шт\n"
         f"- Бетон: {calculation.get('concrete', 0):.3f} м³\n"
-        f"- Арматура: {calculation.get('rebar', 0):,.1f} м\n"
-        f"💸 Общая стоимость: {calculation.get('formwork_cost', 0) + calculation.get('work_cost', 0):,.2f} ₽"
+        f"- Арматура: {calculation.get('rebar', 0):.1f} м\n"
+        f"💸 Общая стоимость: {calculation.get('formwork_cost', 0) + calculation.get('work_cost', 0):.2f} ₽"
     )
     
     await update.message.reply_text(
@@ -240,10 +232,6 @@ async def post_init(application: Application):
     )
     logger.info("Webhook успешно установлен")
 
-async def command1(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка команды /command1"""
-    await update.message.reply_text("Эта команда временно не доступна")
-
 def main() -> None:
     """Запуск бота"""
     TOKEN = os.environ.get('TELEGRAM_TOKEN')
@@ -251,36 +239,47 @@ def main() -> None:
         logger.error("Токен не найден!")
         sys.exit(1)
 
+    # Создаем Application
     application = Application.builder() \
         .token(TOKEN) \
         .post_init(post_init) \
+        .read_timeout(60) \
+        .write_timeout(60) \
+        .connect_timeout(30) \
+        .pool_timeout(60) \
+        .get_updates_read_timeout(60) \
         .build()
 
     # Обработчики
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
-            STONE_WIDTH: [CallbackQueryHandler(stone_width, per_message=True)],  # Исправлено
+            STONE_WIDTH: [CallbackQueryHandler(stone_width)],
             STRUCTURE_LENGTH: [MessageHandler(filters.TEXT & ~filters.COMMAND, structure_length)],
             STRUCTURE_HEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, structure_height)],
-            FINAL_CALCULATION: [CallbackQueryHandler(final_calculation, per_message=True)],  # Исправлено
+            FINAL_CALCULATION: [CallbackQueryHandler(final_calculation)],
             CONTACT_INFO: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_info)]
         },
-        fallbacks=[CommandHandler('cancel', cancel)],
-        per_message=True  # Добавлено для устранения предупреждения
+        fallbacks=[CommandHandler('cancel', cancel)]
     )
 
     application.add_handler(conv_handler)
     application.add_error_handler(error_handler)
 
-    # Удалите или закомментируйте эту строку, если command1 не нужен:
-    # application.add_handler(CommandHandler("command1", command1))
+    # Диагностические команды
+    application.add_handler(CommandHandler("ping", lambda u,c: u.message.reply_text("🏓 Pong!")))
+    application.add_handler(CommandHandler("webhook_info", 
+        lambda u,c: c.bot.get_webhook_info().then(
+            lambda info: u.message.reply_text(f"Webhook info:\n{info}"))))
 
     # Режим работы
     if os.getenv('RENDER'):
         PORT = int(os.environ.get('PORT', 8443))
         app_name = os.getenv('RENDER_APP_NAME', 'opalubka')
         
+        logger.info(f"Запуск webhook на порту {PORT}")
+        
+        # Запуск потока для пинга
         Thread(target=ping_server, args=(app_name,), daemon=True).start()
         
         application.run_webhook(
@@ -288,10 +287,12 @@ def main() -> None:
             port=PORT,
             webhook_url=f"https://{app_name}.onrender.com",
             secret_token=WEBHOOK_SECRET,
+            cert=None,
             drop_pending_updates=True
         )
     else:
         application.run_polling()
+        logger.info("Бот запущен в режиме polling")
 
 if __name__ == '__main__':
     main()
