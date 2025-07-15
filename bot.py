@@ -240,6 +240,10 @@ async def post_init(application: Application):
     )
     logger.info("Webhook успешно установлен")
 
+async def command1(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка команды /command1"""
+    await update.message.reply_text("Эта команда временно не доступна")
+
 def main() -> None:
     """Запуск бота"""
     TOKEN = os.environ.get('TELEGRAM_TOKEN')
@@ -256,20 +260,21 @@ def main() -> None:
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
-            STONE_WIDTH: [CallbackQueryHandler(stone_width)],
+            STONE_WIDTH: [CallbackQueryHandler(stone_width, per_message=True)],  # Исправлено
             STRUCTURE_LENGTH: [MessageHandler(filters.TEXT & ~filters.COMMAND, structure_length)],
             STRUCTURE_HEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, structure_height)],
-            FINAL_CALCULATION: [CallbackQueryHandler(final_calculation)],
+            FINAL_CALCULATION: [CallbackQueryHandler(final_calculation, per_message=True)],  # Исправлено
             CONTACT_INFO: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_info)]
         },
-        fallbacks=[CommandHandler('cancel', cancel)]
+        fallbacks=[CommandHandler('cancel', cancel)],
+        per_message=True  # Добавлено для устранения предупреждения
     )
 
     application.add_handler(conv_handler)
     application.add_error_handler(error_handler)
 
-    # Установка меню (синхронный аналог)
-    application.add_handler(CommandHandler("command1", command1))  # Если нужно
+    # Удалите или закомментируйте эту строку, если command1 не нужен:
+    # application.add_handler(CommandHandler("command1", command1))
 
     # Режим работы
     if os.getenv('RENDER'):
