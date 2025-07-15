@@ -162,9 +162,30 @@ async def structure_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return STRUCTURE_HEIGHT
         
 async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.clear()
-    await update.message.reply_text("✅ Данные очищены! Нажмите /start")
-    return ConversationHandler.END  # Важно для выхода из текущего состояния
+    """Безопасная очистка данных с автоматическим перезапуском"""
+    try:
+        # 1. Полный сброс данных
+        context.user_data.clear()
+        
+        # 2. Принудительный выход из всех состояний
+        if 'conversation' in context.chat_data:
+            del context.chat_data['conversation']
+        
+        # 3. Отправка нового меню
+        keyboard = [
+            [InlineKeyboardButton("🔁 Перезапустить", callback_data='restart')],
+            [InlineKeyboardButton("❌ Закрыть", callback_data='close')]
+        ]
+        await update.message.reply_text(
+            "✅ Все данные очищены!",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+            
+        return ConversationHandler.END
+        
+    except Exception as e:
+        logger.error(f"Clear error: {str(e)}")
+        await update.message.reply_text("🔄 Автоматический перезапуск...")
+        return await start(update, context)  # Аварийный перезапуск
 
 async def final_calculation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработка выбора после расчета"""
@@ -270,6 +291,8 @@ def main() -> None:
 
     application.add_handler(conv_handler)
     application.add_error_handler(error_handler)
+    application.add_handler(CommandHandler("clear", clear_history))
+    application.add_handler(CallbackQueryHandler(clear_history, pattern="^restart$"))
 
     # Диагностические команды
     application.add_handler(CommandHandler("ping", lambda u,c: u.message.reply_text("🏓 Pong!")))
