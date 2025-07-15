@@ -3,6 +3,8 @@ import os
 import logging
 import sys
 import types
+from threading import Thread
+import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -23,21 +25,20 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
     handlers=[
-        logging.StreamHandler(),
+        logging.StreamHandler(sys.stdout),
         logging.FileHandler('bot.log', encoding='utf-8')
     ]
 )
 logger = logging.getLogger(__name__)
 
 # Конфигурация
-ADMIN_CHAT_ID = "5559554783"  # Замените на ваш chat_id
+ADMIN_CHAT_ID = "5559554783"
 PING_INTERVAL = 300
-WEBHOOK_SECRET = "qwErTy1234567890poiUytRewq"  # Ваш секретный токен
+WEBHOOK_SECRET = "qwErTy1234567890poiUytRewq"
 
 # Состояния диалога
-(STONE_WIDTH, STRUCTURE_LENGTH, 
- STRUCTURE_HEIGHT, FINAL_CALCULATION, 
- CONTACT_INFO) = range(5)
+(STONE_WIDTH, STRUCTURE_LENGTH, STRUCTURE_HEIGHT, 
+ FINAL_CALCULATION, CONTACT_INFO) = range(5)
 
 # Данные о камнях
 stone_data = {
@@ -46,15 +47,26 @@ stone_data = {
     '40': {'width': 0.40, 'volume': 0.032, 'price': 240, 'work_price': 300}
 }
 
+def ping_server(app_name):
+    """Поддержание активности приложения"""
+    while True:
+        try:
+            requests.get(f"https://{app_name}.onrender.com", timeout=10)
+            logger.info("Пинг выполнен успешно")
+        except Exception as e:
+            logger.error(f"Ошибка пинга: {e}")
+        finally:
+            import time
+            time.sleep(PING_INTERVAL)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Обработка команды /start (работает на любом этапе)"""
+    """Обработка команды /start"""
     context.user_data.clear()
     
     keyboard = [
         [InlineKeyboardButton("20 см", callback_data='20')],
         [InlineKeyboardButton("30 см", callback_data='30')],
-        [InlineKeyboardButton("40 см", callback_data='40')],
-        [InlineKeyboardButton("🔄 Начать сначала", callback_data='restart')]
+        [InlineKeyboardButton("40 см", callback_data='40')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -66,22 +78,32 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     )
     return STONE_WIDTH
 
-async def restart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Обработка кнопки 'Начать сначала'"""
-    return await start(update, context)
-
 async def stone_width(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработка выбора ширины камня"""
     query = update.callback_query
     await query.answer()
     
-    if query.data == 'restart':
-        return await start(update, context)
-    
     context.user_data['stone_width'] = query.data
     await query.edit_message_text(text=f"✅ Ширина камня: {query.data} см")
     await query.message.reply_text('📏 Введите ДЛИНУ строения в МЕТРАХ:')
     return STRUCTURE_LENGTH
+
+async def structure_length(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка ввода длины строения"""
+    try:
+        length = float(update.message.text.replace(',', '.'))
+        if length <= 0:
+            raise ValueError
+        if length > 100:
+            await update.message.reply_text('❌ Максимальная длина - 100 м!')
+            return STRUCTURE_LENGTH
+            
+        context.user_data['structure_length'] = length
+        await update.message.reply_text('📐 Введите ВЫСОТУ строения в МЕТРАХ:')
+        return STRUCTURE_HEIGHT
+    except ValueError:
+        await update.message.reply_text('❌ Ошибка! Введите число больше 0 (например: 5.2):')
+        return STRUCTURE_LENGTH
 
 async def structure_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Расчет и вывод результатов"""
@@ -89,6 +111,9 @@ async def structure_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         height = float(update.message.text.replace(',', '.'))
         if height <= 0:
             raise ValueError
+        if height > 50:
+            await update.message.reply_text('❌ Максимальная высота - 50 м!')
+            return STRUCTURE_HEIGHT
             
         stone = stone_data[context.user_data['stone_width']]
         length_m = context.user_data['structure_length']
@@ -123,11 +148,11 @@ async def structure_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             f"▪ Ширина кладки: {stone['width']*100:.0f} см\n"
             f"▪ Длина строения: {length_m:.2f} м\n"
             f"▪ Высота строения: {height_m:.2f} м\n\n"
-            f"🧱 Количество блоков: {total_blocks:.1f} шт\n"
+            f"🧱 Количество блоков: {total_blocks:,.1f} шт\n"
             f"🏗️ Объем бетона: {total_blocks * stone['volume']:.3f} м³\n"
-            f"💰 Стоимость опалубки: {formwork_cost:.2f} ₽\n"
-            f"👷 Стоимость работы: {work_cost:.2f} ₽\n"
-            f"🔩 Арматура: {total_rebar:.1f} м\n\n"
+            f"💰 Стоимость опалубки: {formwork_cost:,.2f} ₽\n"
+            f"👷 Стоимость работы: {work_cost:,.2f} ₽\n"
+            f"🔩 Арматура: {total_rebar:,.1f} м\n\n"
             f"Выберите действие:"
         )
         
@@ -173,10 +198,10 @@ async def contact_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         f"- Длина: {calculation.get('length', 0)} м\n"
         f"- Высота: {calculation.get('height', 0)} м\n"
         f"🧮 Расчет:\n"
-        f"- Блоки: {calculation.get('blocks', 0):.1f} шт\n"
+        f"- Блоки: {calculation.get('blocks', 0):,.1f} шт\n"
         f"- Бетон: {calculation.get('concrete', 0):.3f} м³\n"
-        f"- Арматура: {calculation.get('rebar', 0):.1f} м\n"
-        f"💸 Общая стоимость: {calculation.get('formwork_cost', 0) + calculation.get('work_cost', 0):.2f} ₽"
+        f"- Арматура: {calculation.get('rebar', 0):,.1f} м\n"
+        f"💸 Общая стоимость: {calculation.get('formwork_cost', 0) + calculation.get('work_cost', 0):,.2f} ₽"
     )
     
     await update.message.reply_text(
@@ -222,7 +247,10 @@ def main() -> None:
         logger.error("Токен не найден!")
         sys.exit(1)
 
-    application = Application.builder().token(TOKEN).build()
+    application = Application.builder() \
+        .token(TOKEN) \
+        .post_init(post_init) \
+        .build()
 
     # Обработчики
     conv_handler = ConversationHandler(
@@ -234,21 +262,25 @@ def main() -> None:
             FINAL_CALCULATION: [CallbackQueryHandler(final_calculation)],
             CONTACT_INFO: [MessageHandler(filters.TEXT & ~filters.COMMAND, contact_info)]
         },
-        fallbacks=[CommandHandler('start', start)],  # /start работает всегда
-        per_message=True
+        fallbacks=[CommandHandler('cancel', cancel)]
     )
 
-    # Добавляем обработчик /start отдельно, чтобы работал в любом месте
-    application.add_handler(CommandHandler('start', start))
     application.add_handler(conv_handler)
     application.add_error_handler(error_handler)
 
     # Режим работы
     if os.getenv('RENDER'):
+        PORT = int(os.environ.get('PORT', 8443))
+        app_name = os.getenv('RENDER_APP_NAME', 'opalubka')
+        
+        # Запуск потока для пинга
+        Thread(target=ping_server, args=(app_name,), daemon=True).start()
+        
         application.run_webhook(
             listen="0.0.0.0",
-            port=int(os.getenv('PORT', 8443)),
-            webhook_url=f"https://{os.getenv('RENDER_APP_NAME')}.onrender.com/",
+            port=PORT,
+            webhook_url=f"https://{app_name}.onrender.com",
+            secret_token=WEBHOOK_SECRET,
             drop_pending_updates=True
         )
     else:
