@@ -284,7 +284,9 @@ def main() -> None:
             drop_pending_updates=True
         )
     else:
-        application.run_polling()
+        await application.bot.set_chat_menu_button(
+    menu_button=MenuButtonCommands()
+).run_polling()
 
 if __name__ == '__main__':
     main()
