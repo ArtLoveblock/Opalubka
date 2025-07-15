@@ -162,24 +162,24 @@ async def structure_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return STRUCTURE_HEIGHT
         
 async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Безопасная очистка данных с автоматическим перезапуском"""
+    """Безопасная очистка истории"""
     try:
-        # 1. Полный сброс данных
+        # Очищаем данные пользователя
         context.user_data.clear()
         
-        # 2. Принудительный выход из всех состояний
-        if 'conversation' in context.chat_data:
-            del context.chat_data['conversation']
-        
-        # 3. Отправка нового меню
-        keyboard = [
-            [InlineKeyboardButton("🔁 Перезапустить", callback_data='restart')],
-            [InlineKeyboardButton("❌ Закрыть", callback_data='close')]
-        ]
+        # Отправляем подтверждение
         await update.message.reply_text(
-            "✅ Все данные очищены!",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-            
+            "✅ Все данные очищены! Нажмите /start для нового расчета",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 Перезапустить", callback_data='restart')]
+            ])
+        )  # <- Вот здесь была пропущена закрывающая скобка
+        
+        return ConversationHandler.END
+        
+    except Exception as e:
+        logger.error(f"Ошибка очистки: {e}")
+        await update.message.reply_text("⚠️ Ошибка очистки. Попробуйте /start")
         return ConversationHandler.END
         
     except Exception as e:
